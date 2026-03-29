@@ -1,0 +1,160 @@
+  int* generateSequence(char c);
+void sendSequence(int* sequence);
+  
+  //TCCR1A is timer register A, TCCR1B is timer register B
+    //Setting both registers to 0 initially (acts like a clear/reset)
+    //Setting WGM12 to 1 sets mode to CTC, counter counts up until it 
+    //reaches OCR1A then resets- better control of output frequency datasheet says
+    //CS10 bit selects a clock with no prescaling- makes frequency calculation easier
+    //OCR1A value chosen based off formula  f = f_clock/(2*N*(1+OCR1A)) where N is the 
+    //prescale factor
+    //made small adjustments to make more accurate after starting with baseline calculation
+    //Clock runs at 16MHz
+    //hello world
+  const char startBit = 0;
+  const char stopBit = 1;
+  const unsigned int bitDuration = 22000;  //22000 micro or 22 milli
+  //01100001
+  //int sequence[10] = {startBit, 0, 1, 1, 0, 0, 0, 0, 1, stopBit};   //ASCII code for 'a'
+  const char string[] = "a";
+  const int markFreq = 3482;  //measured to be about 2295Hz
+  const int spaceFreq = 3761; //measured to be about 2125Hz;
+  int bitIndex = 0;
+
+  void setup() {
+
+    Serial.begin(9600);
+    Serial.print('\n');
+    for (int i = 0; i < strlen(string); i++) {
+        char c = string[i];
+        int* s = generateSequence(c);
+        
+        Serial.print("'");
+        Serial.print(c);
+        Serial.print("' (");
+        Serial.print((uint8_t)c);
+        Serial.print("): ");
+        
+        for (int j = 0; j < 10; j++) {
+            Serial.print(s[j]);
+            Serial.print(" ");
+        }
+        Serial.println();
+    }
+  bool FreqSelector = true; //true for 2295 false for 2125
+  int freq;
+  if(FreqSelector)
+  {
+    freq = 3482;
+  }
+  else{
+    freq = 3761;
+  }
+    // put your setup code here, to run once:
+    
+        pinMode(9, OUTPUT);  // OC1A
+
+  
+  //TCCR1 used to set up waveform generation
+    TCCR1A = 0;
+    TCCR1B = 0;
+
+    //Toggle OC1A on compare match
+    TCCR1A |= (1 << COM1A0);   // COM1A1 = 0, COM1A0 = 1
+
+    // CTC mode (TOP = OCR1A)
+    TCCR1B |= (1 << WGM12);    //WGM13 = 0, WGM12 = 1, WGM11 = 0, WGM10 = 0
+
+    // No prescaler (N = 1)
+    TCCR1B |= (1 << CS10);
+
+    OCR1A = freq;
+      // TCCR1A = 0;   // Clear control register A (WGM11=0, WGM10=0)
+      // TCCR1B = 0;   // Clear control register B (WGM13=0, WGM12=0, CS12=0, CS11=0, CS10=0)
+      // //CTC mode
+      // TCCR1B |= (1 << WGM12);
+
+      // //prescale 64     
+      // TCCR1B |= (1 << CS11) | (1 << CS10);    //011 is the 64 prescale
+
+      // // Set compare value for 22 ms
+      // OCR1A = 5499;       //ticks = OCR1A + 1 = 5500
+
+      // // Enable interrupt on compare match A
+      // TIMSK1 |= (1 << OCIE1A);
+
+
+    //TCCR1 for clock to send bits
+  // TCCR2A = 0;
+  // TCCR2B = 0;
+  // // Toggle OC2A on compare match
+  // TCCR2A |= (1 << COM2A0);
+  // // CTC mode (TOP = OCR2A)
+  // TCCR2A |= (1 << WGM21);   // WGM21 = 1, WGM20 = 0
+  // // No prescaler
+  // TCCR2B |= (1 << CS20);
+
+  // OCR2A = freq;
+
+
+  // OCR1A = 0;
+  //   for(int i = 0; i<4;i++)
+  //   {
+  //     sendSequence();
+  //   }
+  // OCR1A = 0;
+  }
+
+  void loop() {
+        TCCR1B |= (1 << CS10);   // start timer
+    // put your main code here, to run repeatedly:
+    OCR1A = markFreq;
+    delay(1000);
+    for (int i = 0; i < strlen(string); i++) {
+        sendSequence(generateSequence(string[i]));
+    }
+        TCCR1B &= ~(1 << CS10);  // stop timer
+  }
+
+  // ISR(TIMER1_COMPA_vect) {
+  //     // uint8_t bit = sequence[bitIndex];
+
+  //     // if (bit == 1) {
+  //     //     OCR2A = markFreq;
+  //     // } else {
+  //     //     OCR2A = spaceFreq;
+  //     // }
+
+  //     // bitIndex++;
+  //     // if (bitIndex >= 10) {
+  //     //     bitIndex = 0;  // loop sequence
+  //     // }
+  //     sendSequence();
+  // }
+
+  void sendSequence(int* sequence)
+  {
+    for(int i = 0; i<10; i++)
+    {
+        if(sequence[i] == 1)
+        {
+          OCR1A = markFreq;
+        }
+        else
+          OCR1A = spaceFreq;
+        delay(22);
+    }
+  }
+
+  int* generateSequence(char c)  
+  {
+     static int sequence[10] = {startBit,0,0,0,0,0,0,0,0,stopBit};
+     uint8_t asciiVal = (uint8_t)c;
+     for (int i = 8; i >= 1; i--) {
+        sequence[i] = asciiVal % 2;  
+        asciiVal = asciiVal / 2;     
+      }
+
+      return sequence;
+  }
+  
