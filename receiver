@@ -1,0 +1,72 @@
+/*
+ * RTTY Decoder - Corrected Logic
+ * Mark: 2295 Hz (109 ticks) | Space: 2125 Hz (118 ticks)
+ * Bit Duration: 22ms (5500 ticks @ 4us/tick)
+ */
+
+const unsigned int THRESHOLD_TICKS = 113;    
+const unsigned int BIT_DURATION_TICKS = 5500; 
+const unsigned int START_DELAY_TICKS = 8250;  // 1.5 bits
+
+volatile unsigned int pulseWidthTicks = 0;
+volatile unsigned int lastCapture = 0;
+
+void setup() {
+  Serial.begin(9600);
+  pinMode(8, INPUT);
+
+  // Timer 1: 64 Prescaler (4us per tick)
+  TCCR1A = 0; 
+  TCCR1B = 0;
+  TCNT1 = 0;
+  TCCR1B |= (1 << ICNC1) | (1 << ICES1) | (1 << CS11) | (1 << CS10);
+  TIMSK1 |= (1 << ICIE1);
+  
+  Serial.println("System Ready. Idle at 2295Hz (Mark)...");
+}
+
+ISR(TIMER1_CAPT_vect) {
+  unsigned int currentCapture = ICR1;
+  pulseWidthTicks = currentCapture - lastCapture;
+  lastCapture = currentCapture;
+}
+
+// Logic: 
+// 109 ticks (Mark) < 113 -> returns 1
+// 118 ticks (Space) > 113 -> returns 0
+int readCurrentBit() {
+  if ((unsigned int)(TCNT1 - lastCapture) > 1000) return 1; // Idle if no signal
+  return (pulseWidthTicks > THRESHOLD_TICKS) ? 0 : 1;
+}
+
+void waitTicks(unsigned int ticksToWait) {
+  unsigned int start = TCNT1;
+  while ((unsigned int)(TCNT1 - start) < ticksToWait);
+}
+
+void loop() {
+
+  if (readCurrentBit() == 0) {
+    
+
+    waitTicks(START_DELAY_TICKS);
+    
+    uint8_t receivedData = 0;
+    
+
+    for (int i = 7; i >= 0; i--) {
+      if (readCurrentBit() == 1) {
+        receivedData |= (1 << i);
+      }
+      waitTicks(BIT_DURATION_TICKS);
+    }
+    
+
+    if (readCurrentBit() == 1) {
+      Serial.write((char)receivedData); 
+    }
+    
+  
+    //waitTicks(BIT_DURATION_TICKS);
+  }
+}
